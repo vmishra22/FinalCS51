@@ -34,6 +34,16 @@ public:
 		mEnd -= iLine.getEnd();
 	}
 
+	const Point<T, N>& getLeft()
+	{
+		return mStart;
+	}
+
+	const Point<T, N>& getRight()
+	{
+		return mEnd;
+	}
+
 private:
 	Point<T, N> mStart;
 	Point<T, N> mEnd;

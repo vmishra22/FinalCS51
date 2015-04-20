@@ -1,5 +1,6 @@
 #include "Point.h"
 #include "Line.h"
+#include "Event.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
@@ -9,6 +10,8 @@
 #include <algorithm>
 #include <iterator>
 #include <stack>
+#include <queue>
+#include <set>
 using namespace std;
 
 #define EPS 1.0e-10
@@ -23,25 +26,9 @@ using namespace std;
 
 GLdouble width, height;   /* window width and height */
 int wd;                   /* GLUT window handle */
-int lineEnds[NENDS][2];       /* array of 2D points */
-
-/* Program initialization NOT OpenGL/GLUT dependent,
-as we haven't created a GLUT window yet */
-void
-init(void)
-{
-	width = 1280.0;                 /* initial window width and height, */
-	height = 800.0;                  /* within which we draw. */
-	lineEnds[0][0] = (int)(0.25*width);  /* (0,0) is the lower left corner */
-	lineEnds[0][1] = (int)(0.75*height);
-	lineEnds[1][0] = (int)(0.75*width);
-	lineEnds[1][1] = (int)(0.25*height);
-
-	return;
-}
 
 //Minimum Y element, if there is a tie then lesser X value element is before the other one.
-bool compare_Min(const PointFloat2D& a, const PointFloat2D& b)
+bool compare_MinY(const PointFloat2D& a, const PointFloat2D& b)
 {
 	bool retVal = false;
 	if ( (fabs(a[1] - b[1]) < EPS) && (fabs(a[1] - b[1]) >= 0) && ((a[0] - b[0]) < EPS) )
@@ -58,7 +45,7 @@ bool compare_Min(const PointFloat2D& a, const PointFloat2D& b)
 bool compareDirection(const PointFloat2D& vect1, const PointFloat2D& vect2)
 {
 	float value = (vect1[0] * vect2[1] - vect2[0] * vect1[1]);
-	return !(value < 0);
+	return !(value <= 0);
 }
 
 bool isNonLeftTurn(const PointFloat2D& pt0, const PointFloat2D& pt1, const PointFloat2D& pt2)
@@ -83,6 +70,160 @@ void nextToStackTop(stack<PointFloat2D>& iStack, PointFloat2D& oPoint)
 		oPoint = iStack.top();
 		iStack.push(currentTop);
 	}
+}
+
+//draw input points for finding the Convex Hull.
+void drawPoints(vector<PointFloat2D>& iListPoints)
+{
+	glPointSize(5.);
+	glBegin(GL_POINTS);
+	glColor3f(1.0, 0.0, 0.0);
+	glEnable(GL_POINT_SMOOTH);
+
+	for (vector<PointFloat2D>::iterator it = iListPoints.begin(); it != iListPoints.end(); ++it)
+	{
+		PointFloat2D point = *it;
+		glVertex2f(point[0], point[1]);
+	}
+
+	glDisable(GL_POINT_SMOOTH);
+	glEnd();
+	glFlush();
+}
+
+//Find convex hull points.
+void findAndDrawConvexHull(vector<PointFloat2D>& iListPoints)
+{
+	//Put min-y element at start of the container
+	sort(begin(iListPoints), end(iListPoints), compare_MinY);
+
+	//Sort the points based on counterclock rotation of polar angles.
+	vector<PointFloat2D>::iterator vecPointsItr = begin(iListPoints);
+	PointFloat2D referencePoint = *vecPointsItr;
+	for_each(next(vecPointsItr), iListPoints.end(), [referencePoint](PointFloat2D& pt){ pt -= referencePoint; });
+	sort(next(vecPointsItr), end(iListPoints), compareDirection);
+	for_each(next(vecPointsItr), iListPoints.end(), [referencePoint](PointFloat2D& pt){ pt += referencePoint; });
+
+	//Create a stack for convex hull points.
+	stack<PointFloat2D> hullStack;
+
+	//Push first three points into stack.
+	hullStack.push(referencePoint);
+	hullStack.push(*(next(vecPointsItr)));
+	hullStack.push(*(next(next(vecPointsItr))));
+
+	for (vector<PointFloat2D>::iterator it = next(vecPointsItr, 3); it != iListPoints.end(); ++it)
+	{
+		PointFloat2D pt1, pt2, pt3;
+		pt3 = *it;
+		bool nonLeftTurn = true;
+		while (nonLeftTurn)
+		{
+			nextToStackTop(hullStack, pt1);
+			pt2 = hullStack.top();
+			nonLeftTurn = isNonLeftTurn(pt1, pt2, pt3);
+			if (nonLeftTurn)
+				hullStack.pop();
+		}
+		hullStack.push(pt3);
+	}
+
+	glLineWidth(1.5);
+	glEnable(GL_LINE_SMOOTH);
+	glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+	glBegin(GL_LINE_LOOP);
+	glColor3f(0.0, 1.0, 0.0);
+	while (!hullStack.empty())
+	{
+		PointFloat2D pt = hullStack.top();
+		glVertex2f(pt[0], pt[1]);
+		hullStack.pop();
+	}
+	glEnd();
+	glFlush();
+}
+/**************************************************/
+/***************LINE INTERSECTION*********************/
+/*************************************************/
+void drawLines(vector<PointFloat2D>& iListPoints)
+{
+	glPointSize(5.);
+	glBegin(GL_LINES);
+	glColor3f(0.0, 0.0, 1.0);
+	glEnable(GL_LINE_SMOOTH);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glHint(GL_LINE_SMOOTH_HINT, GL_DONT_CARE);
+	glLineWidth(1.5);
+
+	for (vector<PointFloat2D>::iterator it = iListPoints.begin(); it != iListPoints.end(); it = next(it,2))
+	{
+		PointFloat2D point1 = *it;
+		PointFloat2D point2 = *(next(it));
+		glVertex2f(point1[0], point1[1]);
+		glVertex2f(point2[0], point2[1]);
+	}
+	glEnd();
+	glFlush();
+}
+
+//create Input Line segments
+void createEvents(vector<PointFloat2D>& iListInputPointsFloat2D, vector<EventFloat2D>& oEventVec)
+{
+	for (vector<PointFloat2D>::iterator it = iListInputPointsFloat2D.begin(); it != iListInputPointsFloat2D.end(); it = next(it, 2))
+	{
+		PointFloat2D leftPoint = *it;
+		PointFloat2D rightPoint = *(next(it));
+		LineFloat2D lineSegment = LineFloat2D(leftPoint, rightPoint);
+
+		oEventVec.push_back(EventFloat2D(leftPoint, lineSegment, true));
+		oEventVec.push_back(EventFloat2D(rightPoint, lineSegment, false));
+	}
+}
+
+//Minimum X element, if there is a tie then lesser Y value element is before the other one.
+bool compare_MinX(const PointFloat2D& a, const PointFloat2D& b)
+{
+	bool retVal = false;
+	if ((fabs(a[0] - b[0]) < EPS) && (fabs(a[0] - b[0]) >= 0) && ((a[1] - b[1]) < EPS))
+		retVal = true;
+	else if ((a[0] - b[0] < 0) && (fabs(a[0] - b[0]) > EPS))
+		retVal = true;
+	else
+		retVal = false;
+	return retVal;
+}
+
+class eventsComparator
+{
+public:
+	bool operator()(EventFloat2D& e1, EventFloat2D& e2)
+	{
+		bool retVal = false;
+		float e1X = (e1.getEventPoint())[0]; float e1Y = (e1.getEventPoint())[1];
+		float e2X = (e2.getEventPoint())[0]; float e2Y = (e2.getEventPoint())[1];
+		if ((e1X - e2X > 0) && (fabs(e1X - e2X) > EPS))
+			retVal = true;
+		else if ((fabs(e1X - e2X) < EPS) && (fabs(e1X - e2X) >= 0))
+		{
+			if (e1Y - e2Y > 0)
+				retVal = true;
+		}
+		else
+			retVal = false;
+		return retVal;
+	}
+};
+
+void findIntersection(vector<PointFloat2D>& iListPoints)
+{
+	vector<EventFloat2D> eventVector;
+	createEvents(iListPoints, eventVector);
+
+	//Create a Priority queue of min-heap for X-coordinate of event
+	typedef priority_queue<EventFloat2D, vector<EventFloat2D>, eventsComparator> eventsPQ;
+	eventsPQ(eventsComparator(), eventVector);
+
 }
 
 void GetAndDrawPoints()
@@ -116,80 +257,19 @@ void GetAndDrawPoints()
 				
 		}		
 	}
-	glPointSize(5.);
-	glBegin(GL_POINTS);
-	glColor3f(1.0, 0.0, 0.0);
-	glEnable(GL_POINT_SMOOTH);
-
-	for (vector<PointFloat2D>::iterator it = listInputPointsFloat2D.begin(); it != listInputPointsFloat2D.end(); ++it)
-	{
-		PointFloat2D point = *it;
-		glVertex2f(point[0], point[1]);
-	}
-
-	glDisable(GL_POINT_SMOOTH);
-	glEnd();
-	glFlush();
-	//Put min-y element at start of the container
-	//vector<PointFloat2D>::iterator minYElement = min_element(begin(listInputPointsFloat2D), end(listInputPointsFloat2D), compare_Min);
-	sort(begin(listInputPointsFloat2D), end(listInputPointsFloat2D), compare_Min);
-	//sort(next(begin(listInputPointsFloat2D)), end(listInputPointsFloat2D), compareDirection);
-
-	//Sort the points based on counterclock rotation of polar angles.
-	vector<PointFloat2D>::iterator vecPointsItr= begin(listInputPointsFloat2D);
-	PointFloat2D referencePoint = *vecPointsItr;
-	for_each(next(vecPointsItr), listInputPointsFloat2D.end(), [referencePoint](PointFloat2D& pt){ pt -= referencePoint; });
-	sort(next(vecPointsItr), end(listInputPointsFloat2D), compareDirection);
-	for_each(next(vecPointsItr), listInputPointsFloat2D.end(), [referencePoint](PointFloat2D& pt){ pt += referencePoint; });
-
-	//Create a stack for convex hull points.
-	stack<PointFloat2D> hullStack;
-
-	//Push first three points into stack.
-	hullStack.push(referencePoint);
-	hullStack.push(*(next(vecPointsItr)));
-	hullStack.push(*(next(next(vecPointsItr))));
-
-	for (vector<PointFloat2D>::iterator it = next(vecPointsItr, 3); it != listInputPointsFloat2D.end(); ++it)
-	{
-		PointFloat2D pt1, pt2, pt3;
-		pt3 = *it;
-		bool nonLeftTurn = true;
-		while (nonLeftTurn)
-		{
-			nextToStackTop(hullStack, pt1);
-			pt2 = hullStack.top();
-			nonLeftTurn = isNonLeftTurn(pt1, pt2, pt3);
-			if (nonLeftTurn)
-				hullStack.pop();
-		}
-		hullStack.push(pt3);
-	}
+	//drawLines(listInputPointsFloat2D);
+	//findIntersection(listInputPointsFloat2D);
 	
-
-	glLineWidth(1.5);
-	glEnable(GL_LINE_SMOOTH);
-	glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
-	glBegin(GL_LINE_LOOP);
-	glColor3f(0.0, 1.0, 0.0);
-	while (!hullStack.empty())
-	{
-		PointFloat2D pt = hullStack.top();
-		glVertex2f(pt[0], pt[1]);
-		hullStack.pop();
-	}
-	glEnd();
-	glFlush();
+	drawPoints(listInputPointsFloat2D);
+	findAndDrawConvexHull(listInputPointsFloat2D);
 }
 
 
 /* Callback functions for GLUT */
 
 /* Draw the window - this is where all the GL actions are */
-void
-display(void)
+void display(void)
 {
-	
 	/* clear the screen to white */
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -202,8 +282,7 @@ display(void)
 /* Called when window is resized,
 also when window is first created,
 before the first call to display(). */
-void
-reshape(int w, int h)
+void reshape(int w, int h)
 {
 	/* save new screen dimensions */
 	width = (GLdouble)w;
@@ -221,8 +300,7 @@ reshape(int w, int h)
 	return;
 }
 
-void
-kbd(unsigned char key, int x, int y)
+void kbd(unsigned char key, int x, int y)
 {
 	switch ((char)key) {
 	case 'q':
@@ -236,13 +314,10 @@ kbd(unsigned char key, int x, int y)
 	return;
 }
 
-int
-main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
-	/* perform initialization NOT OpenGL/GLUT dependent,
-	as we haven't created a GLUT window yet */
-	init();
-
+	width = 1280.0;                 /* initial window width and height, */
+	height = 800.0;                  /* within which we draw. */
 	/* initialize GLUT, let it extract command-line
 	GLUT options that you may provide
 	- NOTE THE '&' BEFORE argc */
