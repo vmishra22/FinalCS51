@@ -153,8 +153,8 @@ void findAndDrawConvexHull(vector<PointFloat2D>& iListPoints)
 	glEnd();
 	glFlush();
 }
-/**************************************************/
-/***************LINE INTERSECTION*********************/
+/*************************************************/
+/***************SEGMENT INTERSECTION*****************/
 /*************************************************/
 void drawLines(vector<PointFloat2D>& iListPoints)
 {
@@ -428,6 +428,7 @@ void ReadInputPointsFromFile(vector<PointFloat2D>& oInputPointsList)
 		}
 	}
 }
+
 void drawConvexHull()
 {
 	glClear(GL_COLOR_BUFFER_BIT);
