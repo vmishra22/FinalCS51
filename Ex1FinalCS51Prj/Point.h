@@ -17,8 +17,10 @@ public:
 	Point(const T& pX) : mPosition[0](pX){
 		assert(N == 1);
 	}
-	Point(const T& pX, const T& pY) : mPosition[0](pX), mPosition[1](pY){
+	Point(const T& pX, const T& pY) {
 		assert(N == 2);
+		mPosition[0] = pX;
+		mPosition[1] = pY;
 	}
 	Point(vector<T>& vPos){
 		assert(N == vPos.size());
