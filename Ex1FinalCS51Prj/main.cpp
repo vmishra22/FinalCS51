@@ -398,9 +398,8 @@ void findIntersection(vector<PointFloat2D>& iListPoints)
 
 void ReadInputPointsFromFile(vector<PointFloat2D>& oInputPointsList)
 {
-	ifstream input("2dpointsdata.txt");
+	ifstream input("../data/2dpointsdata.txt");
 	bool dimCalculated = false; int dim = 0; string dataType = "";
-	/*vector<PointFloat2D> listInputPointsFloat2D;*/
 	for (string line; getline(input, line);) 
 	{
 		stringstream lineStream(line);
@@ -466,15 +465,11 @@ also when window is first created,
 before the first call to display(). */
 void reshape(int w, int h)
 {
-	/* save new screen dimensions */
 	width = (GLdouble)w;
 	height = (GLdouble)h;
 
-	/* tell OpenGL to use the whole window for drawing */
 	glViewport(0, 0, (GLsizei)width, (GLsizei)height);
 
-	/* do an orthographic parallel projection with the coordinate
-	system set to first quadrant, limited by screen/window size */
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glOrtho(0.0, width, 0.0, height, -1.f, 1.f);
@@ -482,7 +477,7 @@ void reshape(int w, int h)
 	return;
 }
 
-void kbd(unsigned char key, int x, int y)
+void keyboardCallBack(unsigned char key, int x, int y)
 {
 	switch ((char)key) {
 	case 'c':
@@ -506,12 +501,11 @@ void kbd(unsigned char key, int x, int y)
 
 int main(int argc, char *argv[])
 {
-	width = 1280.0;                 /* initial window width and height, */
-	height = 800.0;                  /* within which we draw. */
+	/* initial window width and height, */
+	width = 1280.0;    
+	height = 800.0;                  
 
-	/* initialize GLUT, let it extract command-line
-	GLUT options that you may provide
-	- NOTE THE '&' BEFORE argc */
+	/* initialize GLUT */
 	glutInit(&argc, argv);
 
 	/* specify the display to be single
@@ -522,15 +516,13 @@ int main(int argc, char *argv[])
 	glutInitWindowSize((int)width, (int)height);
 
 	/* create the window and store the handle to it */
-	wd = glutCreateWindow("Convex Hull" /* title */);
-
-	/* --- register callbacks with GLUT --- */
+	wd = glutCreateWindow("Convex Hull");
 
 	/* register function to handle window resizes */
 	glutReshapeFunc(reshape);
 
 	/* register keyboard event processing function */
-	glutKeyboardFunc(kbd);
+	glutKeyboardFunc(keyboardCallBack);
 
 	/* register function that draws in the window */
 	glutDisplayFunc(display);
